@@ -1,6 +1,6 @@
-const plotlyFolder = "./node_modules/plotly.js/";
-const jsPath = plotlyFolder + "dist/plotly.js";
-const packagePath = plotlyFolder + "package.json";
+const plotlyModule = "plotly.js/";
+const jsPath = require.resolve(plotlyModule + "dist/plotly.js");
+const packagePath = require.resolve(plotlyModule + "package.json");
 const jsReg = /(define\(d3\).*)\n(\}\.apply\(self\)|\}\(\));/;
 const packageReg = /\"main\":\s\"(.\/lib\/index\.js|\.\/dist\/plotly.js)",/;
 const fs = require("fs");
