@@ -84,6 +84,10 @@
     "ShiftCohort": {
       "title": "Shift Cohort",
       "subText": "Select a cohort from the cohort list. Apply the cohort to the dashboard."
+    },
+    "PreBuiltCohort": {
+      "featureNameNotFound": "Feature name not found in the dataset",
+      "notACategoricalFeature": "Feature is not categorical"
     }
   },
   "Counterfactuals": {
@@ -105,6 +109,7 @@
     "createCounterfactual": "Counterfactual",
     "createOwn": "Create your own counterfactual:",
     "currentClass": "Current class",
+    "currentRange": "Current range",
     "decreaseByOne": "Decrease value by 1",
     "desiredClass": "Desired class for counterfactual(s)",
     "header": "What-If counterfactuals",
@@ -1044,13 +1049,16 @@
       "_rSquared.comment": "the coefficient of determination, see https://en.wikipedia.org/wiki/Coefficient_of_determination",
       "_recall.comment": "computed recall of model, see https://en.wikipedia.org/wiki/Evaluation_of_binary_classifiers",
       "accuracy": "Accuracy: {0}",
-      "fnr": "False Negative Rates: {0}",
-      "fpr": "False Positive Rates: {0}",
+      "fnr": "False negative rate: {0}",
+      "fpr": "False positive rate: {0}",
       "meanPrediction": "Mean prediction {0}",
-      "mse": "MSE: {0}",
+      "mse": "Mean squared error: {0}",
       "precision": "Precision: {0}",
-      "rSquared": "R-squared: {0}",
-      "recall": "Recall: {0}"
+      "rSquared": "R²: {0}",
+      "recall": "Recall: {0}",
+      "selectionRate": "Selection rate: {0}",
+      "mae": "Mean absolute error: {0}",
+      "f1Score": "F1 score: {0}"
     },
     "ValidationErrors": {
       "_inconsistentDimensions.comment": "Raise warning if arguments passed in have different sizes, listing dimensions of both mismatching pieces.",

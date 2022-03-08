@@ -10,7 +10,8 @@ import pandas as pd
 from econml.solutions.causal_analysis import CausalAnalysis
 
 from responsibleai._data_validations import validate_train_test_categories
-from responsibleai._internal.constants import ManagerNames
+from responsibleai._internal.constants import (CausalManagerKeys,
+                                               ListProperties, ManagerNames)
 from responsibleai._tools.causal.causal_config import CausalConfig
 from responsibleai._tools.causal.causal_constants import (DefaultParams,
                                                           ModelTypes,
@@ -24,7 +25,7 @@ from responsibleai.rai_insights.constants import ModelTask
 
 
 class CausalManager(BaseManager):
-    """Manager for causal analysis."""
+    """Manager for generating causal analyses from a dataset."""
 
     def __init__(
         self,
@@ -35,12 +36,12 @@ class CausalManager(BaseManager):
         categorical_features: Optional[List[str]]
     ):
         """Construct a CausalManager for generating causal analyses
-           from a dataset.
+            from a dataset.
         :param train: Dataset on which to compute global causal effects
-                     (#samples x #features).
+            (#samples x #features).
         :type train: pandas.DataFrame
         :param test: Dataset on which to compute local causal effects
-                     (#samples x #features).
+            (#samples x #features).
         :type test: pandas.DataFrame
         :param target_column: The name of the label column.
         :type target_column: str
@@ -91,10 +92,20 @@ class CausalManager(BaseManager):
         :type treatment_features: list
         :param heterogeneity_features: Features that mediate the causal effect.
         :type heterogeneity_features: list
-        :param nuisance_model: Model type to use for nuisance estimation.
+        :param nuisance_model: This model used to estimate the outcome and the
+            treatment features from the other features present in user data.
+            It is one of {'linear', 'automl'}, optional (default='linear').
+            If 'linear', then LassoCV (for regression) and
+            LogisticRegressionCV (for classification) are used.
+            If 'automl', then a k-fold cross-validation and model selection
+            is performed among several models and the best is chosen.
         :type nuisance_model: str
-        :param heterogeneity_model: Model type to use for
-                                    treatment effect heterogeneity.
+        :param heterogeneity_model: The heterogeneity model is used to
+            estimate the treatment effect based on the heterogeneity features.
+            It is one of {'linear', 'forest'} (default='linear').
+            'linear' means that a heterogeneity model of the form
+            theta(X)=<a, X> will be used, while 'forest' means that a
+            forest model will be trained instead.
         :type heterogeneity_model: str
         :param alpha: Confidence level of confidence intervals.
         :type alpha: float
@@ -139,14 +150,19 @@ class CausalManager(BaseManager):
         :type verbose: int
         :param random_state: Controls the randomness of the estimator.
         :type random_state: int or RandomState or None
-        :return: Causal result.
-        :rtype: CausalResult
         """
         difference_set = set(treatment_features) - set(self._train.columns)
         if len(difference_set) > 0:
             message = ("Feature names in treatment_features do "
                        f"not exist in train data: {list(difference_set)}")
             raise UserConfigValidationException(message)
+
+        if self._task_type == ModelTask.CLASSIFICATION:
+            is_multiclass = len(np.unique(
+                self._train[self._target_column].values).tolist()) > 2
+            if is_multiclass:
+                raise UserConfigValidationException(
+                    "Multiclass classification isn't supported")
 
         if nuisance_model not in [ModelTypes.AUTOML,
                                   ModelTypes.LINEAR]:
@@ -156,33 +172,19 @@ class CausalManager(BaseManager):
                        f"got {nuisance_model}")
             raise UserConfigValidationException(message)
 
-        X_train = self._train.drop([self._target_column], axis=1)
-        X_test = self._test.drop([self._target_column], axis=1)
-        y_train = self._train[self._target_column].values.ravel()
+        if heterogeneity_model not in [ModelTypes.FOREST,
+                                       ModelTypes.LINEAR]:
+            message = (f"heterogeneity_model should be one of "
+                       f"['{ModelTypes.FOREST}', "
+                       f"'{ModelTypes.LINEAR}'], "
+                       f"got {heterogeneity_model}")
+            raise UserConfigValidationException(message)
 
         validate_train_test_categories(
             train_data=self._train,
             test_data=self._test,
             rai_compute_type='Causal analysis',
             categoricals=self._categorical_features)
-
-        is_classification = self._task_type == ModelTask.CLASSIFICATION
-        analysis = CausalAnalysis(
-            treatment_features,
-            self._categorical_features,
-            heterogeneity_inds=heterogeneity_features,
-            classification=is_classification,
-            nuisance_models=nuisance_model,
-            heterogeneity_model=heterogeneity_model,
-            upper_bound_on_cat_expansion=upper_bound_on_cat_expansion,
-            skip_cat_limit_checks=skip_cat_limit_checks,
-            n_jobs=n_jobs,
-            categories=categories,
-            verbose=verbose,
-            random_state=random_state,
-        )
-        self._fit_causal_analysis(analysis, X_train, y_train,
-                                  upper_bound_on_cat_expansion)
 
         result = CausalResult()
         result.config = CausalConfig(
@@ -202,49 +204,7 @@ class CausalManager(BaseManager):
             random_state=random_state,
             categorical_features=self._categorical_features,
         )
-
-        result.causal_analysis = analysis
-
-        result.global_effects = analysis.global_causal_effect(
-            alpha=alpha, keep_all_levels=True)
-        result.local_effects = analysis.local_causal_effect(
-            X_test, alpha=alpha, keep_all_levels=True)
-
-        result.policies = []
-
-        # Check treatment_cost is valid
-        if isinstance(treatment_cost, int) and treatment_cost == 0:
-            treatment_cost = [0] * len(treatment_features)
-
-        if not isinstance(treatment_cost, list):
-            message = ("treatment_cost must be a list with "
-                       "the same number of elements as "
-                       "treatment_features where each element "
-                       "is either a constant cost of treatment "
-                       "or an array specifying the cost of "
-                       "treatment per sample. "
-                       "Found treatment_cost of type "
-                       f"{type(treatment_cost)}, expected list.")
-            raise UserConfigValidationException(message)
-        elif len(treatment_cost) != len(treatment_features):
-            message = ("treatment_cost must be a list with "
-                       "the same number of elements as "
-                       "treatment_features. "
-                       "Length of treatment_cost was "
-                       f"{len(treatment_cost)}, expected "
-                       f"{len(treatment_features)}.")
-            raise UserConfigValidationException(message)
-
-        for i in range(len(treatment_features)):
-            policy = self._create_policy(
-                analysis, X_test,
-                treatment_features[i], treatment_cost[i],
-                alpha, max_tree_depth, min_tree_leaf_samples)
-            result.policies.append(policy)
-
-        result._validate_schema()
         self._results.append(result)
-        return result
 
     def _fit_causal_analysis(
         self,
@@ -310,15 +270,108 @@ class CausalManager(BaseManager):
                               y, alpha=alpha).to_dict(orient="records")
 
     def compute(self):
-        """No-op function to comply with model analysis design."""
-        pass
+        """Computes the causal effects by running the causal
+           configuration."""
+        is_classification = self._task_type == ModelTask.CLASSIFICATION
+        for result in self._results:
+            causal_config = result.config
+            if not result.is_computed:
+                analysis = CausalAnalysis(
+                    causal_config.treatment_features,
+                    self._categorical_features,
+                    heterogeneity_inds=causal_config.heterogeneity_features,
+                    classification=is_classification,
+                    nuisance_models=causal_config.nuisance_model,
+                    heterogeneity_model=causal_config.heterogeneity_model,
+                    upper_bound_on_cat_expansion=causal_config.
+                    upper_bound_on_cat_expansion,
+                    skip_cat_limit_checks=causal_config.skip_cat_limit_checks,
+                    n_jobs=causal_config.n_jobs,
+                    categories=causal_config.categories,
+                    verbose=causal_config.verbose,
+                    random_state=causal_config.random_state,
+                )
+
+                X_train = self._train.drop([self._target_column], axis=1)
+                X_test = self._test.drop([self._target_column], axis=1)
+                y_train = self._train[self._target_column].values.ravel()
+
+                self._fit_causal_analysis(
+                    analysis, X_train, y_train,
+                    causal_config.upper_bound_on_cat_expansion)
+                result.causal_analysis = analysis
+
+                result.global_effects = analysis.global_causal_effect(
+                    alpha=causal_config.alpha, keep_all_levels=True)
+                result.local_effects = analysis.local_causal_effect(
+                    X_test, alpha=causal_config.alpha, keep_all_levels=True)
+
+                result.policies = []
+
+                # Check treatment_cost is valid
+                if isinstance(causal_config.treatment_cost, int) and \
+                        causal_config.treatment_cost == 0:
+                    revised_treatment_cost = [0] * len(
+                        causal_config.treatment_features)
+                else:
+                    revised_treatment_cost = causal_config.treatment_cost
+
+                if not isinstance(revised_treatment_cost, list):
+                    message = (
+                        "treatment_cost must be a list with "
+                        "the same number of elements as "
+                        "treatment_features where each element "
+                        "is either a constant cost of treatment "
+                        "or an array specifying the cost of "
+                        "treatment per sample. "
+                        "Found treatment_cost of type "
+                        f"{type(revised_treatment_cost)}, expected list.")
+                    raise UserConfigValidationException(message)
+                elif len(revised_treatment_cost) != \
+                        len(causal_config.treatment_features):
+                    message = ("treatment_cost must be a list with "
+                               "the same number of elements as "
+                               "treatment_features. "
+                               "Length of treatment_cost was "
+                               f"{len(revised_treatment_cost)}, expected "
+                               f"{len(causal_config.treatment_features)}.")
+                    raise UserConfigValidationException(message)
+
+                for i in range(len(causal_config.treatment_features)):
+                    policy = self._create_policy(
+                        analysis, X_test,
+                        causal_config.treatment_features[i],
+                        revised_treatment_cost[i],
+                        causal_config.alpha, causal_config.max_tree_depth,
+                        causal_config.min_tree_leaf_samples)
+                    result.policies.append(policy)
+
+                result._validate_schema()
 
     def get(self):
         """Get the computed causal insights."""
         return self._results
 
     def list(self):
-        pass
+        """List information about the CausalManager.
+
+        :return: A dictionary of properties.
+        :rtype: dict
+        """
+        props = {ListProperties.MANAGER_TYPE: self.name}
+        causal_props_list = []
+        for result in self._results:
+            causal_config_dict = result.config.get_config_as_dict()
+            causal_config_dict[CausalManagerKeys.GLOBAL_EFFECTS_COMPUTED] = \
+                True if result.global_effects is not None else False
+            causal_config_dict[CausalManagerKeys.LOCAL_EFFECTS_COMPUTED] = \
+                True if result.local_effects is not None else False
+            causal_config_dict[CausalManagerKeys.POLICIES_COMPUTED] = \
+                True if result.policies is not None else False
+            causal_props_list.append(causal_config_dict)
+        props[CausalManagerKeys.CAUSAL_EFFECTS] = causal_props_list
+
+        return props
 
     def get_data(self):
         """Get causal data

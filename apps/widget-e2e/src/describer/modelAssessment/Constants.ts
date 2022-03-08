@@ -9,9 +9,9 @@ export enum Locators {
   IFITableRowSelected = 'div[class^="ms-List-page"] div[class^="ms-DetailsRow"] div[class^="ms-Check is-checked"]',
   IFIDropdownSelectedOption = "div[class^='featureImportanceChartAndLegend']",
   IFIScrollableTable = "div.tabularDataView div.ms-ScrollablePane div.ms-ScrollablePane--contentContainer",
-  IFINumberOfBars = "#FeatureImportanceBar svg .plot .points .point path",
+  IFINumberOfBars = "#FeatureImportanceBar svg g.highcharts-series-group rect",
   IFIYAxisValue = '#FeatureImportanceBar div[class^="rotatedVerticalBox-"]',
-  IFIXAxisValue = '#FeatureImportanceBar g[class^="cartesianlayer"] g[class^="xtick"]',
+  IFIXAxisValue = "#FeatureImportanceBar g.highcharts-xaxis-labels text",
   ICEPlot = '#subPlotChoice label:contains("ICE")', // ICE - Individual Conditional Expectation
   ICENoOfPoints = "#subPlotContainer svg g[class^='plot'] .points .point",
   IFITopFeaturesText = "div[class^='featureImportanceControls'] span[class^='sliderLabel']",
@@ -86,5 +86,12 @@ export enum Locators {
   MSScrollable = "#OverallMetricChart div[class^='scrollableWrapper']",
   MSCohortDropdown = "#modelPerformanceCohortPicker",
   MSDropdownOptions = "div[class^='dropdownItemsWrapper'] button:contains('CohortCreateE2E')",
-  MSYAxisPoints = "#OverallMetricChart g[class^='cartesianlayer'] g[class^='ytick']"
+  MSYAxisPoints = "#OverallMetricChart g[class^='cartesianlayer'] g[class^='ytick']",
+  CausalCalloutHeader = "#causalAggregateView div[class^='calloutHeader']",
+  CausalCalloutInner = "#causalAggregateView div[class^='calloutInner']",
+  CausalAnalysisTable = "#causalAggregateView div.ms-DetailsList",
+  CausalChartXAxisValues = '#causalAggregateView svg g[class*="highcharts-xaxis-labels"] text',
+  CausalAggregateView = "#causalAggregateView",
+  ModelOverviewHeader = "#ModelAssessmentDashboard #modelStatisticsHeader",
+  CounterfactualHeader = "#ModelAssessmentDashboard span:contains('What-If counterfactuals')"
 }
